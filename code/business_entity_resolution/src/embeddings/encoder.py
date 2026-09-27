@@ -18,7 +18,9 @@ def semantic_text(rec):
     parts = [rec.get("name_core", ""), rec.get("name_translit", ""),
              rec.get("address_norm", ""), rec.get("address_translit", "")]
     t = _SEP.join(p for p in parts if p)
-    return t[:2000]
+    # Names first: truncation keeps the highest-signal fields. Shorter text =
+    # ~linearly faster transformer encoding (Cell 3: 10M+ rows).
+    return t[:C.ENCODER_MAX_CHARS]
 
 
 class Encoder:

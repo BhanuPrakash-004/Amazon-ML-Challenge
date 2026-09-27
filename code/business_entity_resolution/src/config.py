@@ -96,7 +96,10 @@ RARE_MAX_QUERY_TOKENS = 12
 # Sec 10/12: dense retrieval
 ENCODER_MODEL = "minishlab/potion-multilingual-128M"
 ENCODER_MAX_LEN = 128
-ENCODER_BATCH = int(os.environ.get("ENCODER_BATCH", "256"))
+ENCODER_BATCH = int(os.environ.get("ENCODER_BATCH", "512"))
+# Chars per semantic text (names first). Lower = faster ANN encoding at some
+# recall cost. 2000 default (quality); 512 recommended for the 3h budget.
+ENCODER_MAX_CHARS = int(os.environ.get("ENCODER_MAX_CHARS", "2000"))
 ANN_TOPK_S2 = 12
 ANN_TOPK_S3 = 12
 FAISS_NLIST = 4096
