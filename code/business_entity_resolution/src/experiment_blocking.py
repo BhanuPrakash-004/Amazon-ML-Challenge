@@ -85,7 +85,12 @@ def run(train_dir=None, K=22, no_ann=False, max_s1=20000):
         try:
             from .embeddings.encoder import Encoder, semantic_text
             from .embeddings.faiss_index import FaissIndex
-            enc = Encoder(device="cpu")
+            try:
+                import torch
+                dev = "cuda:0" if torch.cuda.is_available() else "cpu"
+            except Exception:
+                dev = "cpu"
+            enc = Encoder(device=dev)
             V = enc.encode([semantic_text(trec[t]) for t in tids])
             Q = enc.encode([semantic_text(s1rec[s]) for s in s1ids])
             IX = FaissIndex(V.shape[1])
