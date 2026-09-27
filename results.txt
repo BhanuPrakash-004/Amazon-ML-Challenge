@@ -1,0 +1,40 @@
+# results.txt — model scoring log (appended automatically by train/predict)
+
+Every `run_train_v2.py` / `run_predict_v2.py` run appends a block below.
+Quick capped runs (`--s23-head`) underestimate recall — truth lies outside the head.
+Only FULL runs (no `--s23-head`) are comparable to the leaderboard.
+
+=== history (manual entries, pre-logging) ===
+--- 2026-09-25 sample 800 S1 / 155k S23 pool | top_k=30 df_cap=3000 n_tok=8 ---
+blocking recall micro=0.9741 macro=0.9765
+tuned threshold=0.90 val macro-F0.5=0.9650 P/R~0.96 (light 26 feats, 18k pairs)
+
+--- 2026-09-25 FULL train (old settings) 100k/20k | top_k=50 df_cap=5000 n_tok=8 ---
+blocking recall train micro=0.8391 macro=0.8481 | val micro=0.8407 macro=0.8505
+pairs tr=5078172 va=1015717 pos=0.0572/0.0573
+tuned threshold=0.95 val macro-F0.5=0.8696 (killed during refit, model NOT saved)
+lesson: top-50 + DF5000 insufficient for 10M distractors -> new defaults top-100/DF2000/n_tok=12 + multi-pass + re-rank
+
+--- 2026-09-25 smoke (capped, NOT for score) 500/100 | top_k=30 s23-head=50000 ---
+blocking recall ~0.005/0.06 (meaningless, truth outside head) val F0.5=0.0500
+purpose: code-path check only (63s, model saved, then stale models deleted)
+
+=== auto-logged runs below (train_v2 / predict_v2 append here) ===
+=== train 2026-09-25 17:56:10 ===
+args: sample_s1=200 val_s1=50 top_k=20 df_cap=2000 n_tok=12 seed=42
+blocking recall train micro=0.0015 macro=0.0567 | val micro=0.0000 macro=0.0600
+pairs tr=4033 va=1001 pos=0.0002/0.0000
+tuned threshold=0.10 val macro-F0.5=0.0600 P=0.0600 R=0.0600 elapsed=57.9s
+
+=== train 2026-09-25 18:17:25 ===
+args: sample_s1=200 val_s1=50 top_k=20 df_cap=2000 n_tok=12 seed=42
+blocking recall train micro=0.0015 macro=0.0567 | val micro=0.0000 macro=0.0600
+pairs tr=4033 va=1001 pos=0.0002/0.0000
+tuned threshold=0.10 val macro-F0.5=0.0600 P=0.0600 R=0.0600 elapsed=101.9s
+
+=== train 2026-09-25 19:39:08 ===
+args: sample_s1=100000 val_s1=20000 top_k=100 df_cap=2000 n_tok=12 seed=42
+blocking recall train micro=0.8134 macro=0.8238 | val micro=0.8189 macro=0.8287
+pairs tr=9556987 va=1913702 pos=0.0295/0.0296
+tuned threshold=0.98 val macro-F0.5=0.8541 P=0.9120 R=0.7512 elapsed=4544.6s
+

@@ -1,0 +1,29 @@
+mode: FULL
+seed: 42
+hardware:
+  laptop: {cpu: i5-12500H, threads: 12-16, ram_gb: 16}
+  kaggle: {gpus: 2xT4, vram_gb: 15-16, ram_gb: 29-30, cpu: 4, session_h: 12}
+budget_hours: 9
+fallback_modes: [FULL, FAST, SAFE_BASELINE]
+blocking:
+  exact: true
+  rare: {max_df: 2000, top_k_name: 120, top_k_addr: 80, max_query_tokens: 12}
+  numeric: {top_k: 40}
+  char: {n: 3, top_k: 40}
+  transliteration: {auxiliary_only: true, weight: 0.8}
+  e5_name: {model: intfloat/multilingual-e5-small, top_k: 75}
+  e5_full: {model: intfloat/multilingual-e5-small, top_k: 75}
+candidates:
+  raw_pool: 100-300
+  internal_k: 25
+  final_max_per_s1: 15
+  target_avg: 12
+  max_avg: 15
+  union: never_intersect
+features: ~60
+matcher: {model: lightgbm, neg_per_pos: 6, metric: macro_F0.5}
+reranker: {model: BAAI/bge-reranker-v2-m3, top_n: 10, margin: 0.25, selective_only: true}
+decision: {singleton_allowed: true, calibrated: true, per_s1_F0.5: true}
+formats: {intermediate: parquet+zstd, final: tsv}
+outputs: [candidate_pairs.tsv, matching_results.tsv, candidate_stats.json,
+  validation_result.txt, experiment_results.csv, final_config.yaml, run_manifest.json]

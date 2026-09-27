@@ -1,0 +1,28 @@
+# datasets — large, never commit (kept locally only)
+student_resource/dataset/
+dataset/
+*.tsv
+
+# models / caches / embeddings / outputs
+*.pkl
+*.npy
+*.bin
+*.faiss
+*.idx
+models/
+cache/
+checkpoints/
+output/*.tsv
+*.log
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# macOS / junk
+__MACOSX/
+.DS_Store
+._*
