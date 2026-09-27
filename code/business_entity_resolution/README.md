@@ -1,63 +1,65 @@
-# Business Entity Resolution — V3 Final Pipeline (Kaggle T4×2)
+# Business Entity Resolution — Production Pipeline (Kaggle T4×2, 3h)
 
-V2 diagnosis: full-train blocking recall ≈ 0.81–0.82 → val macro-F0.5 ≈ 0.854.
-Bottleneck is candidate generation, not LightGBM. V3 adds multi-block UNION
-(exact + rare name/address + numeric/postal + char 3-gram + transliteration +
-multilingual E5 ANN), cheap prune, hard negatives, enriched LightGBM, selective
-cross-encoder rerank, meta-model, entity-level F0.5 decision. V2 files kept and reused.
+Spec implementation: macro-F0.5 per S1, K=22 candidates, 12 deterministic
+blocks + `minishlab/potion-multilingual-128M` ANN (S2 top-12 + S3 top-12),
+cheap pre-rank, 36-feature LightGBM (all Sec-18 groups), isotonic/Platt
+calibration, F0.5 + per-source S2/S3 thresholds, singleton gate,
+duplicate-family support, BGE reranker disabled by default, open-set country
+(France generalizes via Unicode normalization + multilingual embeddings).
 
-## Problem / data
-`dataset/train/{train_source1,train_source2,train_source3,train_ground_truth}.tsv`,
-`dataset/test/{test_source1,test_source2,test_source3}.tsv` (or `student_resource/dataset/...`
-locally — auto-detected). S1 zero/one/many matches in S2/S3. Metric: macro F0.5 per S1,
-singletons included. No external business data, no geocoding, no web lookup — all
-signals local. France works with no France training labels (open-set country handling).
+## Layout (Sec 32)
 
-## Architecture
-normalization (multi-representation, Unicode-safe) → exact / rare-name / rare-address /
-numeric-postal / char-3gram / transliteration / E5-ANN(name+full) → UNION (never intersect)
-→ cheap prune → rich pair features → LightGBM → selective reranker (top-N ambiguous)
-→ meta-model → entity decision (zero/one/many) → TSVs + validator.
+```
+src/config.py  src/main.py  src/experiment_blocking.py
+src/io/loader.py src/io/writer.py
+src/preprocessing/normalize.py transliterate.py numbers.py tokens.py rarity.py
+src/blocking/exact_blocks.py numeric_blocks.py rare_blocks.py ann_retrieval.py candidate_union.py rerank.py
+src/embeddings/encoder.py faiss_index.py
+src/features/name_features.py address_features.py numeric_features.py semantic_features.py structural_features.py
+src/training/make_training_pairs.py hard_negatives.py train_lgbm.py calibrate.py tune_threshold.py
+src/inference/score_candidates.py singleton_gate.py family_support.py final_decision.py
+src/pipeline/train.py src/pipeline/predict.py
+src/evaluation/f05.py candidate_recall.py
+kaggle_run.py  kaggle/kaggle_pipeline.ipynb
+```
 
-## Kaggle setup (T4×2, 1×T4 minimum, ~30GB RAM, 20GB /kaggle/working, 12h sessions)
-Stages are resumable via `cache/checkpoints/`. Run across sessions:
-1. preprocess + lexical indexes → 2. E5 index A → 3. E5 index B → 4. candidates/mining →
-5. matcher/selection → 6. test candidates → 7. scoring/rerank → 8. outputs/validator/ZIP.
-GPU only for E5/reranker; LightGBM/lexical/output on CPU. fp16 sharded embeddings;
-raw shards deleted after compressed FAISS (IndexIVFPQ) persisted. One index in GPU
-memory at a time; OOM auto-halves batch (min 8).
+Legacy flat `src/*.py` (V2/V3) kept for compat (`run_train_v2.py`, laptop/*).
 
-## Commands (run from `code/business_entity_resolution/`)
+## Run
+
 ```bash
 pip install -r requirements.txt
-# full train (lexical + E5 + reranker pipeline)
-python -m src.run_train --data-root dataset --output-root output --model-root models --cache-root cache --candidate-k 150 --rerank-top-n 15
-# lexical-only (no GPU needed)
-python -m src.run_train --data-root dataset --no-e5 --no-reranker --candidate-k 150
-# dev-mode: correctness/shapes only, NOT for quality decisions
-python -m src.run_train --dev-mode --no-e5 --no-reranker --candidate-k 30
-# predict (resumable) + validator
-python -m src.run_predict --data-root dataset --model-root models --cache-root cache --output-root output
-python utils/validate_submission.py --matching output/matching_results.tsv --candidate output/candidate_pairs.tsv --test-dir dataset/test
-# analysis
-python -m src.analyze_blocking_errors
+# mandatory first: Blocking A/B/C/D experiment (Sec 36)
+python -m src.main --experiment --K 22
+# full: train + test inference + validator (K=22; try 18/20/24/26 on validation)
+python -m src.main --mode full --K 22 --batch-size 150000 --workers 4 --gpu-ids 0,1
+# train / predict separately:
+python -m src.main --mode train --train-path <train_dir> --model-path ./models
+python -m src.main --mode predict --test-path <test_dir> --model-path ./models --output-path ../../output
+python ../../student_resource/utils/validate_submission.py --matching ../../output/matching_results.tsv --candidate ../../output/candidate_pairs.tsv --test-dir ../../student_resource/dataset/test
 ```
-Legacy V2 entry points (repo root): `python run_train_v2.py`, `python run_predict_v2.py`.
 
-## Memory/GPU requirements
-Lexical path: <8GB RAM. Full E5: ~30GB RAM, 1×16GB T4 (batch auto-tuned, seq 256).
-Never: giant pandas loads, giant token→list dicts, dense 10M TF-IDF, full feature
-DataFrames, dual raw embedding matrices. Chunked S1 (50k), sharded features/ mmap cache.
+Kaggle: open `kaggle/kaggle_pipeline.ipynb`, attach public dataset
+`satwiksps/amazon-ml-challenge-2026` as Input, Run All. Or
+`python kaggle_run.py --K 22`. Data resolves automatically
+(`/kaggle/input/...` → `$DATA_ROOT` → `student_resource/dataset` → `dataset`).
 
-## Licenses / fair play
-`intfloat/multilingual-e5-small` (MIT), `BAAI/bge-reranker-v2-m3` (Apache-2.0),
-LightGBM (MIT), FAISS (MIT), RapidFuzz (MIT). Pretrained general-language models only;
-no external business databases/APIs/geocoding. All matching signals from competition data.
+## Design notes
 
-## Outputs / reproducibility
-`output/matching_results.tsv` (source1_entity_id, matched_entity_ids),
-`output/candidate_pairs.tsv` (source1_entity_id, candidate_entity_ids) — every test S1
-exactly once, matches ⊆ candidates, S2/S3 ids only. `results/run_*/` holds config,
-metrics, blocking report, thresholds, runtime. `models/selected_pipeline.json` +
-`final_config.json` record the validation winner. Seed 42, deterministic S1-level splits.
-Final ZIP via `python make_package.py --team <name>` (excludes cache/embeddings/indexes).
+* Country is an open-set partition (never hard-coded US/India); France flows
+  through normalization + generic token/numeric + multilingual ANN.
+* All 12 blocks capped (`MAX_POSTING_LEN=20000`); generic tokens never indexed.
+* Embeddings cached once per record; S1 chunked 100–250k; float32/int32 +
+  Arrow/Parquet discipline; GPU0=S2 / GPU1=S3 with CPU-FAISS fallback.
+* `candidate_pairs.tsv` = exact top-K fed to the scorer; every match ⊆ candidates;
+  one row per S1, S2/S3 ids only, no dupes. `matching_results.tsv` scored.
+* BGE reranker (`BAAI/bge-reranker-v2-m3`) is implemented as opt-in only
+  (`USE_RERANKER=False`); enable solely for top 2–3 ambiguous candidates when
+  profiling proves budget remains.
+* No internet business lookup, geocoding, or external augmentation anywhere.
+
+## Acceptance (Sec 35)
+
+Validator PASS; every test S1 exactly once; matches ⊆ candidates; no S1-as-target;
+no dupes; France present in outputs; recall/count/F0.5/singleton stats logged
+per phase including recall@K=10/15/20/22/24/26.
